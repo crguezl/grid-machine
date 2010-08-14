@@ -1,0 +1,362 @@
+#!/usr/bin/perl 
+use warnings;
+use strict;
+use IO::Handle;
+use IO::Select;
+use IPC::Open3;
+use Getopt::Long;
+
+$| = 1;
+
+# Change after modification of REMOTE.pm
+my $endofsubSTORE = 335;
+
+my %subdef; # Keys: remote subroutine names, Values: debug number defining the eval file as in (eval 25)
+my %break; # Keys remote subroutine names. Values: the line number where the break is set 0 if disabled
+
+my $sshpid;
+my $ncpid;
+
+my $sshcommand;
+my $netcommand;
+
+my $ssh = 'ssh';
+my $sshoptions = '';
+my $netcat = 'nc';
+my $netcatoptions = '-v -l';
+my $direct = 1; # by default ssh -L
+
+my $host;
+my $port;
+
+my $count = 0;
+
+sub usage {
+  warn "Usage:\n$0 host:port\n";
+  exit(1);
+}
+
+sub killssh {
+  kill 'KILL', -$sshpid if $sshpid;
+  kill 'KILL', -$ncpid if $ncpid;
+  exit;
+}
+
+local $SIG{INT} = local $SIG{HUP} = local $SIG{KILL} = \&killssh;
+
+sub setbreak {
+  my ($subname, $s, $readpipe, $writepipe, $childerr) = @_;
+
+  # Remember the break
+  my $num =  $subdef{$subname};
+  syswrite($writepipe, "f eval $num\n");
+  my $buffer = readuntilmatch($readpipe, qr{DB<\d+>});
+  syswrite($writepipe, "b 1\n");
+  return; 
+}
+
+sub process_command {
+  my ($s, $readpipe, $writepipe, $childerr) = @_;
+
+  if (m{^gb (\w+)}) {
+    my $subname = $1;
+    $break{$subname} = "b"; # line number
+    unless (exists($subdef{$subname})) {
+      warn "sub $subname does not exists (yet)\n"; # Must set the break as soon as it is compiled
+      $_ = "\n";
+      return;
+    }
+    setbreak($subname, $s, $readpipe, $writepipe, $childerr);
+    $_ = '';
+    return;
+  }
+
+  if (m{^gc (\w+)}) {
+    my $subname = $1;
+    $break{$subname} = "c"; # line number
+    unless (exists($subdef{$subname})) {
+      warn "sub $subname does not exists (yet)\n"; # Must set the continue as soon as it is compiled
+      $_ = "\n";
+      return;
+    }
+    setbreak($subname, $s, $readpipe, $writepipe, $childerr);
+    $_ = '';
+    return;
+  }
+
+  s{^!!\s*(.+)}{p `$1`};
+  s{^main}{c GRID::Machine::main};
+  s{^new}{c GRID::Machine::new};
+  s/crs/c GRID::Machine::eval_and_read_stdfiles/;
+  s/beval\s+(.+)/b GRID::Machine::EVAL \$_[1] =~ m{$1}/;
+  s/bsub\s+(.+)/b GRID::Machine::CALL \$_[1] =~ m{$1}/;
+  s/fg\s+(\d+)/f eval $1/;
+  s/whatf\s+(.+)/x SERVER->{stored_procedures}{$1}/;
+  s/stdout/::get_stdout_name()/e;
+  s/cgs\s+(.+)/c GRID::Machine::$1/;
+}
+
+sub set_connection {
+  my $direct = shift;
+
+  my ($readpipe, $writepipe, $childerr) = (IO::Handle->new, IO::Handle->new, IO::Handle->new);
+  if ($direct) {
+    $sshcommand = "$ssh $sshoptions $host '$netcat $netcatoptions $host -p $port'";
+    open3($writepipe, $readpipe, $childerr, $sshcommand) 
+      || die "Error. Can't execute $sshcommand. $? $!\n";
+  }
+  else {
+    # Reverse ssh tunneling
+    $sshoptions .= "-R 12345:$host:12344";
+
+    #my $sshcommand = "$ssh $sshoptions $host '$netcat $netcatoptions $host -p $port'";
+    # pp2@nereida:~/LGRID_Machine/scripts$ ssh -NR 12345:localhost:12345 beowulf
+    # pp2@nereida:~/src/perl/GRID_Machine/lib/GRID$ nc -v -l -p 12345
+    # pp2@nereida:~/LGRID_Machine/examples$ nestedcallbackdebug.pl localhost:12345 4
+    #       Debugging with 'ssh localhost PERLDB_OPTS="RemotePort=localhost:12345" perl -d'
+    #       Remember to run 'netcat -v -l -p 12345' in localhost
+    #
+    $sshcommand = "$ssh $sshoptions $host"; 
+    $netcommand = "$netcat $netcatoptions -p $port";
+
+    my ($readsshpipe, $writesshpipe, $childssherr) = (IO::Handle->new, IO::Handle->new, IO::Handle->new);
+    $writesshpipe->autoflush(1);
+    $childssherr->autoflush(1);
+    $sshpid = open3($writesshpipe, $readsshpipe, $childssherr, $sshcommand) 
+      || die "Error. Can't execute $sshcommand. $? $!\n";
+
+    $ncpid = open3($writepipe, $readpipe, $childerr, $netcommand) 
+      || die "Error. Can't execute $netcommand. $? $!\n";
+
+  }
+  $writepipe->autoflush(1);
+  $childerr->autoflush(1);
+  return ($writepipe, $readpipe, $childerr);
+}
+
+sub readuntilmatch {
+  my ($readpipe, $regexp) = @_;
+
+  my $buffer;
+  my $bytes = 0;
+  do {
+    $bytes += sysread($readpipe, $buffer, 1024, $bytes);
+  } until ($buffer =~ $regexp);
+  $buffer;
+}
+
+sub dialog {
+  my ($s, $writepipe, $readpipe, $childerr) = @_;
+  while () {
+    my @read_from = $s->can_read();
+    foreach my $file (@read_from) {
+      if ($file == \*STDIN) {
+        my $bytes = sysread(STDIN, $_, 1024);
+        if (defined($bytes) and ($bytes == 0)) {
+          close($writepipe);
+          exit 0;
+        }
+        process_command($s, $readpipe, $writepipe, $childerr);
+
+        syswrite($writepipe,$_) if $bytes;
+      }
+      if ($file == $readpipe) {
+        my $bytes = sysread($readpipe, $_, 1024);
+        if (defined($bytes) and ($bytes == 0)) {
+          close($writepipe);
+          exit 0;
+        }
+
+        #  GMDB<4> c # If the result matches s.t. like this is the compilation of a sub:
+        #  GRID::Machine::STORE(/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:335):
+        #  335:      return;
+        #    DB<4> x ($name, $subref)
+        #    0  'mark_as_clean'
+        #    1  CODE(0x87b3d40)
+        #       -> &GRID::Machine::__ANON__[(eval 36)[/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:315]:15] \
+        #                              in (eval 36)[/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:315]:1-15
+        #         GMDB<5>                                                  
+        #
+
+        # Going to compile a remote subroutine: the end of sub STORE in REMOTE.pm
+        if (m{GRID::Machine::STORE.*\n$endofsubSTORE:\s+return;}) {
+
+          syswrite($writepipe,'x ($name, $subref)'."\n");
+          # The answer will be s.t. like:
+          # 0  'getcwd'
+          # 1  CODE(0x86d6000)
+          #    -> &GRID::Machine::__ANON__[(eval 23)[/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:315]:1]\
+          #    in (eval 23)[/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:315]:1-1
+          #
+
+          my $buffer = readuntilmatch($readpipe, qr{eval\s+\d+});
+
+          #syswrite(STDOUT, "\n*****************\n$buffer\n*******************\n"); # for debug
+          $buffer =~ m{0\s+'(\w+)'.+eval\s+(\d+)}s;
+          my $name = $1 || '';
+          my $file = $2 || '';
+          if ($1 && $2) {
+            $subdef{$name} = $file;
+            #syswrite(STDOUT, "\n*****************\n$name => $file\n*******************\n"); 
+            setbreak($name, $s, $readpipe, $writepipe, $childerr) if exists($break{$name});
+          }
+          else {
+            warn "Error during the compilation of remote sub. name = <$name>, file = <$file>\n";
+          }
+          syswrite($writepipe,"c\n");
+
+        }
+        else { # Ordinary debug step
+          while (m{\bDB<\d+>}g) {
+            $count++;
+            s/DB<\d+>/\nGMDB<$count>/; 
+          }
+          if (m|sub\s*{\s*use strict;0\s*#(\w+)\s+|) { # one of our breaks or continues
+            syswrite($writepipe,"B 1\n") if $break{$1} eq 'c';
+          }
+          syswrite(STDOUT, $_);
+        }
+      }
+      if ($file == $childerr) {
+        my $bytes = sysread($childerr, $_, 1024);
+        if (defined($bytes) and ($bytes == 0)) {
+          close($writepipe);
+          exit 0;
+        }
+        syswrite STDOUT, $_;
+      }
+    }
+  }
+}
+
+################# main #####################
+GetOptions (
+  "ssh=s"           => \$ssh,
+  "sshoptions=s"    => \$sshoptions,
+  "nc=s"            => \$netcat,
+  "ncoptions=s"     => \$netcatoptions,
+  "direct!"         => \$direct,
+);
+my $hostport = shift || $ENV{GRID_REMOTE_DEBUG} || usage();
+
+$hostport =~ m{^([\w.]+):(\d+)$} or usage();
+$host = $1;
+$port = $2;
+
+usage() unless defined($host) && defined($port);
+
+my ($writepipe, $readpipe, $childerr) = set_connection($direct);
+
+my $s = IO::Select->new();
+$s->add(\*STDIN);
+$s->add($readpipe);
+$s->add($childerr);
+
+dialog($s, $writepipe, $readpipe, $childerr);
+
+END {
+  killssh;
+}
+
+__END__
+
+=head1 NAME
+
+gmdeb - debugger for GRID::Machine programs
+
+
+=head1 SYNOPSYS
+
+  gmdeb remotemachine:port
+
+  pp2@nereida:~/LGRID_Machine/examples$ nestedcallbackdebug.pl localhost:12345 4 
+
+=head1 DESCRIPTION
+
+
+By default 
+
+  ssh remotemachine 'netcat -v -l -p port'
+
+  my $machine = GRID::Machine->new(
+    host => $host,
+    debug => $port,
+    uses => [ 'Sys::Hostname' ]
+  );
+
+
+  PERLDB_OPTS="RemotePort=$host:$portdebug" 
+  ssh beowulf PERLDB_OPTS="RemotePort=beowulf:12345" perl -d'
+
+  pp2@nereida:~/LGRID_Machine/scripts$ ssh -NR 12345:localhost:12345 beowulf
+  pp2@nereida:~/src/perl/GRID_Machine/lib/GRID$ nc -v -l -p 12345
+  pp2@nereida:~/LGRID_Machine/examples$ nestedcallbackdebug.pl localhost:12345 4
+      Debugging with 'ssh localhost PERLDB_OPTS="RemotePort=localhost:12345" perl -d'
+      Remember to run 'netcat -v -l -p 12345' in localhost
+
+
+Remember:
+When using reverse tunneling (option C<-nodirect>) the localhost 
+has to be set to accept automaticc SSH connections from itself.
+
+To run the remote side under the control of the perl debugger use the C<debug>
+option of C<new>. The associated value must be a port number higher than 1024:
+
+     my $machine = GRID::Machine->new(
+        host => $host,
+        debug => $port,
+        includes => [ qw{SomeFunc} ],
+     );
+
+Before running the example open a SSH session to the remote machine
+in a different terminal and execute C<netcat> to listen (option C<-l>)
+in the chosen port:
+
+  pp2@nereida:~/LGRID_Machine$ ssh beowulf 'netcat -v -l -p 12345'
+  listening on [any] 12345 ...
+                              
+Now run the program in the first terminal:
+
+  pp2@nereida:~/LGRID_Machine/examples$ debug1.pl beowulf:12345
+  Debugging with 'ssh beowulf PERLDB_OPTS="RemotePort=beowulf:12345" perl -d'
+  Remember to run 'netcat -v -l -p 12345' in beowulf
+
+The program looks blocked. If you go to the other terminal you will find
+the familiar perl debugger prompt:
+
+  casiano@beowulf:~$ netcat -v -l -p 12345
+  listening on [any] 12345 ...
+  connect to [193.145.102.240] from beowulf.pcg.ull.es [193.145.102.240] 38979
+
+  Loading DB routines from perl5db.pl version 1.28
+  Editor support available.
+
+  Enter h or `h h' for help, or `man perldebug' for more help.
+
+  GRID::Machine::MakeAccessors::(/home/pp2/LGRID_Machine/lib/GRID/Machine/MakeAccessors.pm:33):
+  33:     1;
+  auto(-1)  DB<1> c GRID::Machine::main
+  GRID::Machine::main(/home/pp2/LGRID_Machine/lib/GRID/Machine/REMOTE.pm:490):
+  490:      my $server = shift;
+    DB<2>                        
+
+From now on you can execute almost any debugger command. Unfortunately
+you are now inside C<GRID::Machine> code and - until you gain some familiarity 
+with C<GRID::Machine> code -
+it is a bit difficult to find where your code is and where to put 
+your breakpoints.  Future work: write a proper debugger front end.
+
+=head1 AUTHOR
+
+Casiano Rodriguez Leon E<lt>casiano@ull.esE<gt>
+
+=head1 COPYRIGHT
+
+(c) Copyright 2008 Casiano Rodriguez-Leon
+
+This program is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.8 or,
+at your option, any later version of Perl 5 you may have available.
+
+=cut
+

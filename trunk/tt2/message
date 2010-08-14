@@ -1,0 +1,26 @@
+
+This class is used by both the local and the remote sides of the
+C<GRID::Machine>. It implements the low level communication 
+layer. It is responsible of marshalling the data.
+
+=head2 The C<read_operation> Method
+
+Syntax:
+
+   my ( $operation, @args ) = $server->read_operation( );
+
+Returns the kind of operation and the data sent by the other
+side of the SSH link.
+
+=head2 The C<send_operation> Method
+
+Examples:
+
+  $server->send_operation("RETURNED", GRID::Machine::Result->new( %arg ));
+
+  $server->send_operation("DIED", GRID::Machine::Result->new( 
+                                    errmsg  => "$server->{host}: $message")
+  );
+
+  $server->send_operation("RETURNED", exists($server->{stored_procedures}{$name}));
+

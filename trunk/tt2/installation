@@ -1,0 +1,26 @@
+To install L<GRID::Machine>, follow these steps:
+
+=over 2
+
+=item  * Set automatic ssh-authentication with a machine where you have an account.
+
+[% PROCESS automaticauthentication %]
+
+=item  * Before running the tests. Set on the local machine the environment variable 
+C<GRID_REMOTE_MACHINE> to point to a machine that is available using automatic authenticatication. 
+For example, on a C<bash>:
+
+        export GRID_REMOTE_MACHINE=user@machine.domain
+
+Otherwise most connectivity tests will be skipped. This and the previous steps are optional.
+
+=item * Follow the traditional steps:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+=back
+
+

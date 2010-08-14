@@ -1,0 +1,9 @@
+=head1 NAME 
+
+GRID::Machine::Core - Module loaded when bootstraping the remote Perl server
+
+=head1 DESCRIPTION
+
+[% PROCESS Core %]
+
+[% PROCESS postamble %]

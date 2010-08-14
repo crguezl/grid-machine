@@ -1,0 +1,11 @@
+Remember to checkout -if needed - big data from
+
+svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/big_data/open2/
+
+s.t. like this:
+
+examples/matrixproduct/open2$ svn checkout svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/big_data/open2/ big_data
+
+Do this only in one project. Use symbolic links inthe different branches:
+
+          bigdata -> /home/pp2/src/perl/big_matrices_open2/

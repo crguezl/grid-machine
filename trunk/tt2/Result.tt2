@@ -1,0 +1,11 @@
+=head1 NAME
+
+GRID::Machine::Result - The object describing the result of a GRID::Machine RPC
+
+=head1 DESCRIPTION
+
+[% PROCESS result %]
+
+[% PROCESS seealso %]
+
+[% PROCESS postamble %]

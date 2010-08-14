@@ -1,0 +1,86 @@
+# file makepods
+# a 'make' file to build the documentation for GRID::Machine
+#
+
+REGEXP='\.pod$ '
+PODS=$(shell grep ${REGEXP} MANIFEST)
+
+# PLAIN: Core IOHandle ...
+PLAIN=$(basename $(notdir ${PODS}))
+
+COMPONENTS=tt2/automaticauthentication tt2/Core tt2/installation tt2/iohandleremotepipes tt2/message tt2/postamble tt2/remote tt2/result tt2/seealso
+
+TEMPLATES=$(addsuffix .tt2,$(addprefix tt2/,$(PLAIN)))
+
+# HTMLS: /tmp/Core.html ...
+HTMLS=$(addsuffix .html,$(basename $(PODS)))
+
+# WIKIS /tmp/Core.wiki ...
+WIKIS=$(addsuffix .wiki,$(basename $(PODS)))
+
+# TEX /tmp/Core.tex ...
+TEX=$(addsuffix .tex,$(basename $(PODS)))
+
+# PDFS /tmp/Core.pdf ...
+PDFS=$(addsuffix .pdf,$(basename $(PODS)))
+
+pods: pod
+pod: ${PODS}
+
+lib/GRID/Machine.pod: tt2/Machine.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/IOHandle.pod: tt2/IOHandle.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/Core.pod: tt2/Core.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/Message.pod: tt2/Message.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/REMOTE.pod: tt2/REMOTE.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/Result.pod: tt2/Result.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/perlparintro.pod: tt2/perlparintro.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+lib/GRID/Machine/remotedebugtut.pod: tt2/remotedebugtut.tt2 $(COMPONENTS)
+	cd tt2; tpage $(notdir $<) > ../$@
+	
+debug:
+	#echo $(TEMPLATES)
+	echo $(PODS)
+	#echo $(PLAIN)
+	#echo $(HTMLS)
+
+################### html ########################
+htmls: html
+html: $(HTMLS)
+%.html: %.pod
+	mpod2html -nowarnings -noverbose -nonavigation -nobanner -noidx -notoc $<  -o $@
+
+################### wiki ########################
+wikis: wiki
+wiki: $(WIKIS)
+
+%.wiki: %.pod
+	pod2wiki --style googlecode $< > $@
+
+################### latex #######################
+tex: $(TEX)
+%.tex:%.pod
+	pod2latex -full $< -out $@
+
+###################  pdf  #######################
+pdfs:pdf
+pdf: $(PDFS)
+%.pdf:%.tex
+	pdflatex -output-directory $(dir $<) $< 
+
+################### clean #######################
+# TEX auxiliary files *.toc ..
+TOCS=$(addsuffix .toc,$(basename $(PODS)))
+LOGS=$(addsuffix .log,$(basename $(PODS)))
+IDXS=$(addsuffix .idx,$(basename $(PODS)))
+AUXS=$(addsuffix .aux,$(basename $(PODS)))
+.PHONY : clean
+clean:
+	rm -f $(PODS) $(WIKIS) $(HTMLS) $(TEX) $(TOCS) $(PDFS) $(LOGS) $(IDXS) $(AUXS)
+

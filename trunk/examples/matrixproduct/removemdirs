@@ -1,0 +1,3 @@
+#!/bin/bash
+rm -f matrix
+ls -ltr | tail -2
