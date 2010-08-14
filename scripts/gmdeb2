@@ -1,0 +1,27 @@
+#!/usr/local/bin/perl -w
+use strict;
+use GRID::Machine qw(is_operative);
+
+my $delay = 5;
+
+my $hostport = shift || usage();
+
+$hostport =~ m{([\w.]+):(\d+)} or usage();
+my $host = $1;
+my $port = $2;
+
+usage() unless defined($host) && defined($port);
+
+my $ssh = 'ssh -X';
+my $command = "nc -v -l -p $port $host";
+
+  die "$host: Can't find netcat in $host or $host is not operative\n" 
+unless is_operative($ssh, $host, "which nc", $delay);
+
+exec "$ssh $host $command";
+die "Error. Can't execute $command. $? $!\n";
+
+sub usage {
+  warn "Usage:\n$0 host:port\n";
+  exit(1);
+}

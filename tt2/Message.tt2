@@ -1,0 +1,12 @@
+=head1 NAME
+
+GRID::Machine::Message - Primitives for sending and receiving
+
+=head1 DESCRIPTION
+
+[% PROCESS message %]
+
+[% PROCESS seealso %]
+
+
+[% PROCESS postamble %]

@@ -1,0 +1,2 @@
+# makes a tag of the current version. Remember to make a commit first
+svn copy svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/GRID_Machine/trunk svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/GRID_Machine/tags/$1 

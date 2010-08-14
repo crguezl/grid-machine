@@ -1,0 +1,11 @@
+=head1 NAME
+
+GRID::Machine::REMOTE - The server that runs on the other side of the SSH link
+
+=head1 DESCRIPTION
+
+[% PROCESS remote %]
+
+[% PROCESS seealso %]
+
+[% PROCESS postamble %]

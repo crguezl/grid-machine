@@ -1,0 +1,15 @@
+package GRID::machine;
+use strict;
+
+sub mytag {
+   my $self = shift;
+   my $name = shift;
+
+   $self->send_operation( "MYTAG", $name );
+
+   my ($type, $result) = $self->read_operation();
+   return $result if $type eq "RETURNED";
+   return;
+}
+
+1;

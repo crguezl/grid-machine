@@ -1,0 +1,8 @@
+The project was built by user "pp2" in "nereida" using the command:
+
+svn import -m'GRID::Machine based on IPC::SSHPerl' GRIDMACHINE svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/GRID_Machine
+
+And checked out:
+
+pp2@nereida:~/src/perl/GRID_Machine$ svn checkout svn+ssh://casiano@orion.pcg.ull.es/var/svn/casiano/PP2/GRID_Machine/trunk GRID_Machine/
+

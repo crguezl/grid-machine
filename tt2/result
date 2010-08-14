@@ -1,0 +1,110 @@
+
+The class C<GRID::Machine::Result> is used by both the local and remote
+sides of the C<GRID::Machine>, though most of its methods are called 
+on the remote side. 
+
+The result of a RPC is a C<GRID::Machine::Result> object. 
+Such object has the following attributes:
+
+=over 2
+
+=item * I<type>
+
+The C<type> of result returned. A string. Fixed by the protocol.
+Common values are C<RETURNED> and C<DIED>.
+
+=item * I<stdout>
+
+A string containing the contents of C<STDOUT>
+produced during the duration of the RPC
+
+=item * I<stderr>
+
+A string containing the contents of C<STDERR>
+produced during the duration of the RPC
+
+=item * I<results>
+
+A reference to an C<ARRAY> containing the results returned by the RPC
+
+=item * I<errcode>
+
+The contents of C<$?> as produced during the RPC
+
+=item * I<errmsg>
+
+The contents of C<$@> as produced during the RPC
+
+=back
+
+=head2 The Constructor C<new>
+
+Syntax:
+
+  GRID::Machine::Result->new(
+    stdout => $rstdout, 
+    errmsg  => $err, 
+    stderr => $rstderr, 
+    results => \@results
+  )
+
+Builds a new result object.  
+
+=head2 The C<ok> Method
+
+Returns C<TRUE> if the RPC didn't died, i.e. if the C<type> attribute is not
+the string C<'DIED'>
+
+=head2 The C<noerr> Method
+
+Returns C<TRUE> if the RPC didn't died and didn't send any messages 
+through stderr.
+See an example. When running the following program:
+
+  $ cat noerrvsok.pl
+  #!/usr/local/bin/perl -w
+  use strict;
+  use GRID::Machine;
+
+  my $machine = shift || $ENV{GRID_REMOTE_MACHINE};
+  my $m = GRID::Machine->new( host => $machine );
+
+  my $r = $m->eval( q{print STDERR "This is the end\n" });
+
+  print "print to STDERR:\n";
+  print "<".$r->ok.">\n";
+  print "<".$r->noerr.">\n";
+
+  $r = $m->eval( q{warn "This is a warning\n" });
+
+  print "Warn:\n";
+  print "<".$r->ok.">\n";
+  print "<".$r->noerr.">\n";
+
+we get the following output:
+
+
+
+                $ errvsok.pl
+                print to STDERR:
+                <1>
+                <>
+                Warn:
+                <1>
+                <>
+
+=head2 The C<result> Method
+
+Returns the first element of the list referenced by the C<results> attribute
+
+=head2 The C<Results> Method
+
+Returns the list referenced by the C<results> attribute
+
+=head2 The C<str> Method. Stringification of a C<Result> object
+
+Returns the string made of concatenating C<stdout>, C<stderr> and C<errmsg>.
+The Perl operator C<q("")> is overloaded using this method. Thus,
+wherever a C<GRID::Machine::Result> object is used on a scalar string 
+context the C<str> will be called.
+

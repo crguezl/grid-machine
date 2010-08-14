@@ -1,0 +1,9 @@
+=head1 NAME
+
+GRID::Machine::Rfilestatus - Remote Module providing status functions for files
+
+=head1 DESCRIPTION
+
+[% PROCESS Rfilestatus %]
+
+[% PROCESS postamble %]

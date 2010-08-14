@@ -1,0 +1,44 @@
+
+A Remote module (belonging to the C<GRID::Machine> family)
+providing status functions for files
+and directories. The code of the module is itself an example of how
+to write remote modules.
+
+It provides methods that are equivalent of the tests function
+
+      -r -w -e -x -z -s -f -d  -t -T -B -M -A -C
+
+See an example:
+
+ $ cat -n copyandmkdir.pl
+     1  #!/usr/local/bin/perl -w
+     2  use strict;
+     3  use GRID::Machine;
+     4
+     5  my $host = 'orion.pcg.ull.es';
+     6  my $dir = shift || "somedir";
+     7  my $file = shift || $0; # By default copy this program
+     8
+     9  my $machine = GRID::Machine->new(
+    10    host => $host,
+    11    uses => [qw(Sys::Hostname)],
+    12    includes => [ qw(GRID::Machine::Rfilestatus)]
+    13  );
+    14
+    15  my $r;
+    16  $r = $machine->mkdir($dir, 0777) unless $machine->w($dir);
+    17  die "Can't make dir\n" unless $r->ok;
+    18  $machine->chdir($dir)->ok or die "Can't change dir\n";
+    19  $machine->put([$file]) or die "Can't copy file\n";
+    20  print "HOST: ",$machine->eval(" hostname ")->result,"\n",
+    21        "DIR: ",$machine->getcwd->result,"\n",
+    22        "FILE: ",$machine->glob('*')->result,"\n";
+
+
+When this program runs we get an output similar to this:
+
+                    $ copyandmkdir.pl
+                    HOST: orion
+                    DIR: /home/casiano/somedir
+                    FILE: copyandmkdir.pl
+
